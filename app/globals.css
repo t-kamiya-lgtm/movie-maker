@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: #0b0b0c;
+  color: #fff;
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2e;
+  border-radius: 4px;
+}
