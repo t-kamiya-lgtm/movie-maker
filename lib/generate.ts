@@ -8,7 +8,7 @@ import { getImageModel, getVideoModel } from "./providers/catalog";
 import { falAddAmbient, falImage, falVideo } from "./providers/fal";
 import { mockImage, mockSpeech, mockVideo } from "./providers/mock";
 import { fishTts } from "./providers/fish";
-import type { Project, Scene } from "./types";
+import type { Character, Project, Scene } from "./types";
 
 /** URL またはストレージ内の一時ファイルを、指定バケットに保存し直す */
 async function materialize(source: string, bucket: Bucket, fallbackExt: string): Promise<string> {
@@ -55,20 +55,40 @@ export async function generateCharacter(id: string, referencePaths: string[]) {
 
 // ---------- ② シーン画像 ----------
 
+/** 参照画像の役割（人物 / 商品）をモデルに伝える指示文 */
+export function referenceInstructions(people: Character[], items: Character[]): string {
+  const lines: string[] = ["Reference images:"];
+  let n = 1;
+  for (const p of people) {
+    lines.push(
+      `- Image ${n++}: the person "${p.name}". Keep this person's face, hairstyle, body type and identity exactly the same.`,
+    );
+  }
+  for (const it of items) {
+    lines.push(
+      `- Image ${n++}: the product/object "${it.name}". Reproduce it faithfully (shape, package design, logo, colors and printed text). Do not change or invent its branding.`,
+    );
+  }
+  if (people.length) {
+    lines.push("Do not copy the background or clothing of the person reference images unless the scene description asks for it.");
+  }
+  lines.push("Photorealistic, natural lighting, looks like a casual smartphone photo.");
+  return lines.join("\n");
+}
+
 export async function generateSceneImage(id: string) {
   const db = await readDb();
   const s = db.scenes.find((x) => x.id === id);
   if (!s) return;
-  const refs = s.characterIds
-    .map((cid) => db.characters.find((c) => c.id === cid)?.imagePath)
-    .filter((p): p is string => !!p);
-  const names = s.characterIds
-    .map((cid) => db.characters.find((c) => c.id === cid)?.name)
-    .filter(Boolean)
-    .join(", ");
-  const prompt = refs.length
-    ? `${s.prompt}\n\nUse the person(s) in the reference image(s) (${names}) as the main character(s), keeping face, hairstyle and identity consistent. Photorealistic, natural lighting.`
-    : s.prompt;
+  const assets = s.characterIds
+    .map((cid) => db.characters.find((c) => c.id === cid))
+    .filter((c): c is Character => !!c?.imagePath);
+  // 人物 → 商品・小物 の順に参照画像を渡し、それぞれの役割を明示する
+  const people = assets.filter((c) => (c.kind ?? "character") === "character");
+  const items = assets.filter((c) => c.kind === "item");
+  const ordered = [...people, ...items];
+  const refs = ordered.map((c) => c.imagePath!);
+  const prompt = ordered.length ? `${s.prompt}\n\n${referenceInstructions(people, items)}` : s.prompt;
   try {
     const src = await createImage(s.imageModel, prompt, s.aspect, refs);
     const imagePath = await materialize(src, "scenes", "png");

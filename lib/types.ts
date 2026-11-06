@@ -1,7 +1,12 @@
 export type Status = "pending" | "ready" | "error";
 
+/** character = 人物, item = 商品・小物（パッケージ・料理など） */
+export type AssetKind = "character" | "item";
+
 export interface Character {
   id: string;
+  /** 人物か商品・小物か（未設定は人物） */
+  kind?: AssetKind;
   /** キャラクター名（フラグ） */
   name: string;
   tags: string[];

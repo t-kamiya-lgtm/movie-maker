@@ -9,12 +9,13 @@ type Ctx = { params: Promise<{ id: string }> };
 /** 名前・タグの変更 */
 export async function PATCH(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  const body = (await req.json()) as { name?: string; tags?: unknown };
+  const body = (await req.json()) as { name?: string; tags?: unknown; kind?: string };
   const result = await mutate((db) => {
     const c = db.characters.find((x) => x.id === id);
     if (!c) return null;
     if (typeof body.name === "string" && body.name.trim()) c.name = body.name.trim();
     if (body.tags !== undefined) c.tags = normTags(body.tags);
+    if (body.kind === "character" || body.kind === "item") c.kind = body.kind;
     return { ...c };
   });
   return result ? json(viewCharacter(result)) : bad("not found", 404);

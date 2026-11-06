@@ -6,16 +6,21 @@ import { generateCharacter } from "@/lib/generate";
 import { saveBuffer } from "@/lib/storage";
 import { DEFAULT_ASPECT } from "@/lib/aspect";
 import { getImageModel } from "@/lib/providers/catalog";
-import type { Character } from "@/lib/types";
+import type { AssetKind, Character } from "@/lib/types";
+
+const kindOf = (v: unknown): AssetKind => (v === "item" ? "item" : "character");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const tag = new URL(req.url).searchParams.get("tag");
+  const sp = new URL(req.url).searchParams;
+  const tag = sp.get("tag");
+  const kind = sp.get("kind");
   const db = await readDb();
   const list = db.characters
     .filter((c) => !tag || c.tags.includes(tag) || c.name === tag)
+    .filter((c) => !kind || (c.kind ?? "character") === kind)
     .sort((a, b) => b.createdAt - a.createdAt);
   return json(list.map(viewCharacter));
 }
@@ -35,7 +40,8 @@ export async function POST(req: Request) {
   const mode = String(form.get("mode") || "generate");
   const name = String(form.get("name") || "").trim();
   const tags = normTags(form.get("tags"));
-  if (!name) return bad("キャラクター名を入力してください");
+  const kind = kindOf(form.get("kind"));
+  if (!name) return bad("名前を入力してください");
 
   if (mode === "upload") {
     const file = form.get("file");
@@ -43,6 +49,7 @@ export async function POST(req: Request) {
     const imagePath = await saveBuffer("characters", extOf(file), Buffer.from(await file.arrayBuffer()));
     const c: Character = {
       id: randomUUID(),
+      kind,
       name,
       tags,
       prompt: "(アップロード)",
@@ -68,6 +75,7 @@ export async function POST(req: Request) {
   for (let i = 0; i < count; i++) {
     created.push({
       id: randomUUID(),
+      kind,
       name,
       tags,
       prompt,

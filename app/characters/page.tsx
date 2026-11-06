@@ -5,11 +5,15 @@ import { api, aspectStyle, useModels, usePolled, type CharacterView } from "@/li
 import { AspectSelect } from "@/components/AspectSelect";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
 import { Badge, Button, Empty, Field, KeyWarning, Panel, Select, Spinner, inputCls } from "@/components/ui";
+import type { AssetKind } from "@/lib/types";
+
+const KIND_LABEL: Record<AssetKind, string> = { character: "人物", item: "商品・小物" };
 
 export default function CharactersPage() {
   const models = useModels();
   const { data, reload, error } = usePolled<CharacterView[]>("/api/characters", (d) => d.some((c) => c.status === "pending"));
   const [mode, setMode] = useState<"generate" | "upload">("generate");
+  const [kind, setKind] = useState<AssetKind>("character");
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("nano-banana");
@@ -23,12 +27,16 @@ export default function CharactersPage() {
 
   const [filter, setFilter] = useState<string[]>([]);
   const [nameFilter, setNameFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState<AssetKind | "">("");
 
   const characters = data ?? [];
   const allTags = useMemo(() => collectTags(characters), [characters]);
   const names = useMemo(() => [...new Set(characters.map((c) => c.name))], [characters]);
   const shown = characters.filter(
-    (c) => filter.every((t) => c.tags.includes(t)) && (!nameFilter || c.name === nameFilter),
+    (c) =>
+      filter.every((t) => c.tags.includes(t)) &&
+      (!nameFilter || c.name === nameFilter) &&
+      (!kindFilter || (c.kind ?? "character") === kindFilter),
   );
 
   const submit = async () => {
@@ -37,6 +45,7 @@ export default function CharactersPage() {
     try {
       const fd = new FormData();
       fd.set("mode", mode);
+      fd.set("kind", kind);
       fd.set("name", name);
       fd.set("tags", tags.join(","));
       fd.set("aspect", aspect);
@@ -70,7 +79,7 @@ export default function CharactersPage() {
   return (
     <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
       <div className="space-y-4">
-        <h1 className="text-xl font-bold">① キャラクター生成</h1>
+        <h1 className="text-xl font-bold">① キャラクター・商品</h1>
         <KeyWarning show={!!models && !models.keys.fal}>
           FAL_KEY が未設定です。「モック」モデルのみ利用できます。
         </KeyWarning>
@@ -87,8 +96,22 @@ export default function CharactersPage() {
             ))}
           </div>
           <div className="space-y-3">
-            <Field label="キャラクター名（フラグ）">
-              <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: ユイ" list="char-names" />
+            <Field label="種類" hint={kind === "item" ? "商品パッケージ・料理・小物など。② でロゴや色をそのまま再現するよう AI に指示します" : "② で顔や髪型をそろえるよう AI に指示します"}>
+              <div className="flex gap-1.5">
+                {(["character", "item"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${kind === k ? "border-accent bg-accent/15 text-white" : "border-line text-white/60"}`}
+                  >
+                    {KIND_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label={kind === "item" ? "商品名・小物名（フラグ）" : "キャラクター名（フラグ）"}>
+              <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "item" ? "例: プロテインモンスター" : "例: ユイ"} list="char-names" />
               <datalist id="char-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
             </Field>
             {mode === "generate" ? (
@@ -142,8 +165,13 @@ export default function CharactersPage() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-white/80">ストレージ（{shown.length}）</h2>
+          <Select className="!w-auto py-1 text-xs" value={kindFilter} onChange={(e) => setKindFilter(e.target.value as AssetKind | "")}>
+            <option value="">人物＋商品</option>
+            <option value="character">人物のみ</option>
+            <option value="item">商品・小物のみ</option>
+          </Select>
           <Select className="!w-auto py-1 text-xs" value={nameFilter} onChange={(e) => setNameFilter(e.target.value)}>
-            <option value="">全キャラクター</option>
+            <option value="">すべての名前</option>
             {names.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -154,7 +182,7 @@ export default function CharactersPage() {
         </div>
         {error && <p className="text-xs text-red-300">{error}</p>}
         {shown.length === 0 ? (
-          <Empty>キャラクターがまだありません</Empty>
+          <Empty>まだ登録がありません</Empty>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {shown.map((c) => (
@@ -193,8 +221,9 @@ function CharacterCard({
         ) : (
           <div className="flex h-full items-center justify-center p-3 text-center text-[11px] text-red-300">{c.error}</div>
         )}
-        <div className="absolute left-2 top-2">
+        <div className="absolute left-2 top-2 flex gap-1">
           <Badge tone="accent">{c.name}</Badge>
+          {c.kind === "item" && <Badge tone="warn">商品</Badge>}
         </div>
         <button
           onClick={onDelete}
@@ -218,9 +247,20 @@ function CharacterCard({
             </Button>
           </div>
         ) : (
-          <button onClick={() => setEditing(true)} className="text-xs text-white/50 hover:text-white">
-            名前を変更
-          </button>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => setEditing(true)} className="text-xs text-white/50 hover:text-white">
+              名前を変更
+            </button>
+            <select
+              value={c.kind ?? "character"}
+              onChange={(e) => onPatch({ kind: e.target.value })}
+              className="rounded border border-line bg-black/40 px-1 text-[11px] text-white/70"
+              title="種類を変更"
+            >
+              <option value="character">{KIND_LABEL.character}</option>
+              <option value="item">{KIND_LABEL.item}</option>
+            </select>
+          </div>
         )}
         <TagEditor tags={c.tags} suggestions={tags} onChange={(t) => onPatch({ tags: t })} />
       </div>

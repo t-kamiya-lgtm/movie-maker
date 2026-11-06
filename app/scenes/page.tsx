@@ -61,6 +61,8 @@ export default function ScenesPage() {
 
   const scenes = data ?? [];
   const readyChars = (characters ?? []).filter((c) => c.status === "ready");
+  const readyPeople = readyChars.filter((c) => (c.kind ?? "character") === "character");
+  const readyItems = readyChars.filter((c) => c.kind === "item");
   const allTags = useMemo(() => collectTags(scenes), [scenes]);
   const shown = scenes.filter(
     (s) =>
@@ -139,30 +141,25 @@ export default function ScenesPage() {
         <KeyWarning show={!!models && !models.keys.fal}>FAL_KEY が未設定のため、モックモデルで動作します。</KeyWarning>
         <Panel title="シーン画像を生成">
           <div className="space-y-3">
-            <Field label="使用するキャラクター" hint="複数選択可。選択したキャラクターの画像を参照して生成します">
-              {readyChars.length === 0 ? (
-                <p className="text-xs text-white/40">① でキャラクターを作成してください</p>
-              ) : (
-                <div className="grid grid-cols-5 gap-1.5">
-                  {readyChars.map((c) => {
-                    const on = charIds.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setCharIds(on ? charIds.filter((x) => x !== c.id) : [...charIds, c.id])}
-                        className={`relative overflow-hidden rounded-md border-2 ${on ? "border-accent" : "border-transparent opacity-60 hover:opacity-100"}`}
-                        title={c.name}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={c.imageUrl} alt={c.name} className="aspect-[3/4] w-full object-cover" />
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 text-[9px]">{c.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+            <Field label="人物" hint="複数選択可。顔・髪型・体型をそろえて生成します">
+              <AssetPicker
+                assets={readyPeople}
+                selected={charIds}
+                onChange={setCharIds}
+                empty="① で人物を登録してください"
+              />
             </Field>
+            <Field label="商品・小物（任意）" hint="パッケージのロゴ・色・文字をそのまま再現するよう指示します">
+              <AssetPicker
+                assets={readyItems}
+                selected={charIds}
+                onChange={setCharIds}
+                empty="① で種類「商品・小物」として登録すると選べます"
+              />
+            </Field>
+            {charIds.length > 3 && (
+              <p className="text-[11px] text-amber-300">参照画像が多いと再現度が下がることがあります（目安: 合計 3 枚まで）</p>
+            )}
             <Field label="シーンのプロンプト（1行 = 1シーン）">
               <textarea
                 className={`${inputCls} h-32`}
@@ -271,7 +268,7 @@ export default function ScenesPage() {
             動画のみ
           </label>
           <Select className="!w-auto py-1 text-xs" value={charFilter} onChange={(e) => setCharFilter(e.target.value)}>
-            <option value="">全キャラクター</option>
+            <option value="">全人物・商品</option>
             {readyChars.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -306,6 +303,41 @@ export default function ScenesPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** ① で登録した人物・商品をサムネイルで選ぶ */
+function AssetPicker({
+  assets,
+  selected,
+  onChange,
+  empty,
+}: {
+  assets: CharacterView[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  empty: string;
+}) {
+  if (assets.length === 0) return <p className="text-xs text-white/40">{empty}</p>;
+  return (
+    <div className="grid grid-cols-5 gap-1.5">
+      {assets.map((c) => {
+        const on = selected.includes(c.id);
+        return (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onChange(on ? selected.filter((x) => x !== c.id) : [...selected, c.id])}
+            className={`relative overflow-hidden rounded-md border-2 ${on ? "border-accent" : "border-transparent opacity-60 hover:opacity-100"}`}
+            title={c.name}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={c.imageUrl} alt={c.name} className="aspect-[3/4] w-full object-cover" />
+            <span className="absolute inset-x-0 bottom-0 truncate bg-black/70 text-[9px]">{c.name}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
