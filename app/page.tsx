@@ -5,8 +5,8 @@ import { aspectStyle, usePolled, type SceneView } from "@/lib/client";
 import { Empty } from "@/components/ui";
 
 const STARTS = [
-  { href: "/characters", title: "キャラクター生成", desc: "人物を作って名前を付けて保存", step: "①" },
-  { href: "/scenes", title: "シーン動画", desc: "キャラクターでシーンを量産し動画化", step: "②" },
+  { href: "/characters", title: "キャラクター・商品", desc: "人物や商品を登録して名前を付けて保存", step: "①" },
+  { href: "/scenes", title: "シーン動画", desc: "人物と商品でシーンを量産し動画化", step: "②" },
   { href: "/editor", title: "結合動画", desc: "素材をタイムラインに並べて1本に", step: "③" },
   { href: "/voice", title: "ナレーション", desc: "Fish Audio のボイスで音声を追加", step: "④" },
 ];
