@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { api, aspectStyle, useModels, usePolled, type CharacterView } from "@/lib/client";
+import { useEffect, useMemo, useState } from "react";
+import { api, aspectStyle, hasAnyAiKey, pickDefault, useModels, usePolled, type CharacterView } from "@/lib/client";
 import { AspectSelect } from "@/components/AspectSelect";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
 import { Badge, Button, Empty, Field, KeyWarning, Panel, Select, Spinner, inputCls } from "@/components/ui";
@@ -16,8 +16,11 @@ export default function CharactersPage() {
   const [kind, setKind] = useState<AssetKind>("character");
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("nano-banana");
+  const [model, setModel] = useState("google-nano-banana");
   const [aspect, setAspect] = useState("9:16");
+  useEffect(() => {
+    if (models) setModel((cur) => pickDefault(models.imageModels, cur));
+  }, [models]);
   const [count, setCount] = useState(2);
   const [tags, setTags] = useState<string[]>([]);
   const [refs, setRefs] = useState<FileList | null>(null);
@@ -80,8 +83,8 @@ export default function CharactersPage() {
     <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
       <div className="space-y-4">
         <h1 className="text-xl font-bold">① キャラクター・商品</h1>
-        <KeyWarning show={!!models && !models.keys.fal}>
-          FAL_KEY が未設定です。「モック」モデルのみ利用できます。
+        <KeyWarning show={!hasAnyAiKey(models)}>
+          GEMINI_API_KEY（Google）も FAL_KEY も未設定です。「モック」モデルのみ利用できます。
         </KeyWarning>
         <Panel>
           <div className="mb-3 flex gap-1 rounded-lg bg-black/40 p-1 text-sm">

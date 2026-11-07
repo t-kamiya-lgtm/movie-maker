@@ -17,7 +17,7 @@ export type ProjectView = Omit<Project, "narrations"> & {
 export interface ModelInfo {
   aspects: AspectPreset[];
   defaultAspect: string;
-  keys: { fal: boolean; fish: boolean };
+  keys: { fal: boolean; google: boolean; fish: boolean };
   imageModels: { id: string; label: string; note?: string; provider: string; supportsReference: boolean; available: boolean }[];
   videoModels: {
     id: string;
@@ -79,6 +79,23 @@ export function useModels() {
     api<ModelInfo>("/api/models").then(setInfo).catch(() => undefined);
   }, []);
   return info;
+}
+
+/** 使えるモデルの中から既定を選ぶ（Google → fal.ai → モックの順） */
+export function pickDefault<T extends { id: string; provider: string; available: boolean }>(
+  models: T[],
+  current: string,
+): string {
+  if (models.some((m) => m.id === current && m.available)) return current;
+  for (const p of ["google", "fal", "mock"]) {
+    const m = models.find((x) => x.provider === p && x.available);
+    if (m) return m.id;
+  }
+  return current;
+}
+
+export function hasAnyAiKey(info: ModelInfo | null) {
+  return !info || info.keys.google || info.keys.fal;
 }
 
 export function aspectStyle(aspect: string): React.CSSProperties {

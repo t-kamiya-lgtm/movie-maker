@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   api,
   aspectStyle,
+  hasAnyAiKey,
+  pickDefault,
   useModels,
   usePolled,
   type CharacterView,
@@ -28,7 +30,7 @@ export default function ScenesPage() {
   const [charIds, setCharIds] = useState<string[]>([]);
   const [prompts, setPrompts] = useState("");
   const [perPrompt, setPerPrompt] = useState(2);
-  const [imageModel, setImageModel] = useState("nano-banana");
+  const [imageModel, setImageModel] = useState("google-nano-banana");
   const [aspect, setAspect] = useState("9:16");
   const [newTags, setNewTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -41,17 +43,16 @@ export default function ScenesPage() {
   const [selected, setSelected] = useState<string[]>([]);
 
   // 動画化
-  const [videoModel, setVideoModel] = useState("seedance-pro");
+  const [videoModel, setVideoModel] = useState("google-veo-3.1-fast");
   const [motion, setMotion] = useState("");
   const [duration, setDuration] = useState(5);
   const [projectId, setProjectId] = useState("");
 
+  // 設定済みの API キーに合わせて既定モデルを選ぶ（Google → fal.ai → モック）
   useEffect(() => {
-    if (models && !models.keys.fal) {
-      setImageModel("mock-image");
-      setVideoModel("mock-video");
-      setDuration(3);
-    }
+    if (!models) return;
+    setImageModel((cur) => pickDefault(models.imageModels, cur));
+    setVideoModel((cur) => pickDefault(models.videoModels, cur));
   }, [models]);
 
   const vm = models?.videoModels.find((m) => m.id === videoModel);
@@ -138,7 +139,12 @@ export default function ScenesPage() {
     <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
       <div className="space-y-4">
         <h1 className="text-xl font-bold">② シーン素材の量産</h1>
-        <KeyWarning show={!!models && !models.keys.fal}>FAL_KEY が未設定のため、モックモデルで動作します。</KeyWarning>
+        <KeyWarning show={!hasAnyAiKey(models)}>
+          GEMINI_API_KEY（Google）も FAL_KEY も未設定のため、モックモデルで動作します。
+        </KeyWarning>
+        <KeyWarning show={!!vm && vm.provider === "google" && aspect !== "9:16" && aspect !== "16:9"}>
+          Veo は 9:16 / 16:9 で生成します。{aspect} にするには ③ の書き出し時に切り抜き / 余白で調整されます。
+        </KeyWarning>
         <Panel title="シーン画像を生成">
           <div className="space-y-3">
             <Field label="人物" hint="複数選択可。顔・髪型・体型をそろえて生成します">

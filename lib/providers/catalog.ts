@@ -1,15 +1,18 @@
 /**
  * 利用できる AI モデルの一覧。
- * fal.ai のエンドポイント名はここで管理しているので、新しいモデルを追加する場合はこのファイルに追記する。
- * https://fal.ai/models
+ * - provider "google": Gemini API（Google Cloud の請求アカウントで課金）。endpoint は Gemini API のモデル ID
+ *   https://ai.google.dev/gemini-api/docs/models
+ * - provider "fal": fal.ai。endpoint は fal のエンドポイント名  https://fal.ai/models
+ * 新しいモデルを追加する・モデル ID が変わった場合はこのファイルを編集する。
  */
 
+export type Provider = "google" | "fal" | "mock";
 export type ImageSizeMode = "aspect_ratio" | "image_size";
 
 export interface ImageModelDef {
   id: string;
   label: string;
-  provider: "fal" | "mock";
+  provider: Provider;
   /** テキスト→画像 */
   endpoint: string;
   /** 参照画像（キャラクター）付きで生成するエンドポイント。input.image_urls を受け取る */
@@ -23,7 +26,7 @@ export interface ImageModelDef {
 export interface VideoModelDef {
   id: string;
   label: string;
-  provider: "fal" | "mock";
+  provider: Provider;
   /** 画像→動画 */
   endpoint: string;
   /** 選択可能な秒数 */
@@ -39,10 +42,33 @@ export interface VideoModelDef {
 
 const NB_RATIOS = ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"];
 
+/** Veo が対応している比率（それ以外は結合時に切り抜き / 余白で調整） */
+export const VEO_RATIOS = ["16:9", "9:16"];
+
 export const IMAGE_MODELS: ImageModelDef[] = [
   {
+    id: "google-nano-banana",
+    label: "Nano Banana（Google）",
+    provider: "google",
+    endpoint: "gemini-2.5-flash-image",
+    editEndpoint: "gemini-2.5-flash-image",
+    sizeMode: "aspect_ratio",
+    ratios: NB_RATIOS,
+    note: "キャラクターの一貫性が高い・Google Cloud で課金",
+  },
+  {
+    id: "google-nano-banana-pro",
+    label: "Nano Banana Pro（Google）",
+    provider: "google",
+    endpoint: "gemini-3-pro-image-preview",
+    editEndpoint: "gemini-3-pro-image-preview",
+    sizeMode: "aspect_ratio",
+    ratios: NB_RATIOS,
+    note: "高品質・商品の文字再現に強い・Google Cloud で課金",
+  },
+  {
     id: "nano-banana",
-    label: "Nano Banana (Gemini 2.5 Flash Image)",
+    label: "Nano Banana（fal.ai）",
     provider: "fal",
     endpoint: "fal-ai/nano-banana",
     editEndpoint: "fal-ai/nano-banana/edit",
@@ -52,7 +78,7 @@ export const IMAGE_MODELS: ImageModelDef[] = [
   },
   {
     id: "nano-banana-pro",
-    label: "Nano Banana Pro (Gemini 3 Pro Image)",
+    label: "Nano Banana Pro（fal.ai）",
     provider: "fal",
     endpoint: "fal-ai/nano-banana-pro",
     editEndpoint: "fal-ai/nano-banana-pro/edit",
@@ -88,6 +114,35 @@ export const IMAGE_MODELS: ImageModelDef[] = [
 ];
 
 export const VIDEO_MODELS: VideoModelDef[] = [
+  {
+    id: "google-veo-3.1-fast",
+    label: "Veo 3.1 Fast（Google・環境音付き）",
+    provider: "google",
+    endpoint: "veo-3.1-fast-generate-preview",
+    durations: [8],
+    durationFormat: "number-string",
+    nativeAudio: true,
+    note: "速くて安め。まずはこちらで確認",
+  },
+  {
+    id: "google-veo-3.1",
+    label: "Veo 3.1（Google・環境音付き）",
+    provider: "google",
+    endpoint: "veo-3.1-generate-preview",
+    durations: [8],
+    durationFormat: "number-string",
+    nativeAudio: true,
+    note: "高品質",
+  },
+  {
+    id: "google-veo-3-fast",
+    label: "Veo 3 Fast（Google・環境音付き）",
+    provider: "google",
+    endpoint: "veo-3.0-fast-generate-001",
+    durations: [8],
+    durationFormat: "number-string",
+    nativeAudio: true,
+  },
   {
     id: "seedance-pro",
     label: "Seedance 1.0 Pro (ByteDance)",
@@ -128,7 +183,7 @@ export const VIDEO_MODELS: VideoModelDef[] = [
   },
   {
     id: "veo3-fast",
-    label: "Google Veo 3 Fast（音声付き）",
+    label: "Veo 3 Fast（fal.ai・音声付き）",
     provider: "fal",
     endpoint: "fal-ai/veo3/fast/image-to-video",
     durations: [8],
@@ -161,6 +216,15 @@ export function getVideoModel(id: string) {
 
 export function hasFalKey() {
   return !!process.env.FAL_KEY;
+}
+export function googleApiKey() {
+  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+}
+export function hasGoogleKey() {
+  return !!googleApiKey();
+}
+export function providerAvailable(p: Provider) {
+  return p === "mock" ? true : p === "google" ? hasGoogleKey() : hasFalKey();
 }
 export function hasFishKey() {
   return !!process.env.FISH_AUDIO_API_KEY;

@@ -1,16 +1,21 @@
 import { json } from "@/lib/api";
 import { ASPECTS, DEFAULT_ASPECT } from "@/lib/aspect";
-import { IMAGE_MODELS, VIDEO_MODELS, hasFalKey, hasFishKey } from "@/lib/providers/catalog";
+import {
+  IMAGE_MODELS,
+  VIDEO_MODELS,
+  hasFalKey,
+  hasFishKey,
+  hasGoogleKey,
+  providerAvailable as avail,
+} from "@/lib/providers/catalog";
 
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const fal = hasFalKey();
-  const avail = (p: string) => (p === "mock" ? true : fal);
   return json({
     aspects: ASPECTS,
     defaultAspect: DEFAULT_ASPECT,
-    keys: { fal, fish: hasFishKey() },
+    keys: { fal: hasFalKey(), google: hasGoogleKey(), fish: hasFishKey() },
     imageModels: IMAGE_MODELS.map((m) => ({
       id: m.id,
       label: m.label,

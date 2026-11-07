@@ -14,16 +14,28 @@ AI でキャラクターを作り、そのキャラクターでシーン動画�
 9:16（TikTok / Reels / Shorts）、16:9（YouTube / X）、1:1（正方形）、4:5（Instagram フィード）、3:4、2:3（Pinterest）、21:9。
 `lib/aspect.ts` に追加すれば増やせます。結合時は「切り抜き（全面）」か「余白を付ける」を選べます。
 
-## 対応 AI モデル（fal.ai 経由）
+## 対応 AI モデル
 
-API キー 1 つ（`FAL_KEY`）で次のモデルを切り替えて使えます。
+設定した API キーに応じて、使えるモデルが画面で選べるようになります。どちらか一方だけでも動きます。
 
+**Google（`GEMINI_API_KEY`）** — 課金は Google Cloud の請求アカウント
+- **画像:** Nano Banana、Nano Banana Pro
+- **動画（画像→動画）:** Veo 3.1 Fast、Veo 3.1、Veo 3 Fast（いずれも 8 秒・9:16 / 16:9、環境音を同時に生成）
+
+**fal.ai（`FAL_KEY`）**
 - **画像:** Nano Banana、Nano Banana Pro、Seedream 4.0、FLUX.1 [dev]
 - **動画（画像→動画）:** Seedance 1.0 Pro / Lite、Kling 2.1 Master、Hailuo 02、Veo 3 Fast
-- **環境音:** 音声を生成しない動画モデル（Seedance など）を使った場合は、生成後に **MMAudio v2** で環境音を自動で付けます（話し声・音楽は除外）。Veo 3 は環境音のみを指示して生成します。
-- **ナレーション:** Fish Audio（`FISH_AUDIO_API_KEY`）
+- **環境音:** 音声を生成しない動画モデル（Seedance など）を使った場合は、生成後に **MMAudio v2** で環境音を自動で付けます（話し声・音楽は除外）。
 
-モデルは `lib/providers/catalog.ts` で管理しているので、fal.ai のモデルを追加するときはそこに 1 項目足すだけです。
+**ナレーション:** Fish Audio（`FISH_AUDIO_API_KEY`）
+
+モデルは `lib/providers/catalog.ts` で管理しています。モデルを追加する・モデル ID が変わったときは、そこを編集してください。
+
+### Google の API キーの作り方
+
+1. Google Cloud コンソールで、請求アカウントが紐づいたプロジェクトを選ぶ（または作る）
+2. 「Generative Language API」を有効にする
+3. https://aistudio.google.com/apikey で、そのプロジェクトを選んで API キーを作成し、`.env` の `GEMINI_API_KEY` に設定する
 API キーが未設定のときは「モック」モデル（グラデーション画像・ノイズ音・テスト音）で全機能を試せます。
 
 ## セットアップ
@@ -38,7 +50,7 @@ npm install
 cp .env.example .env
 ```
 
-`.env` に `FAL_KEY` と `FISH_AUDIO_API_KEY` を設定します。
+`.env` に `GEMINI_API_KEY`（または `FAL_KEY`）と `FISH_AUDIO_API_KEY` を設定します。
 
 ```bash
 npm run dev

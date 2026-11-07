@@ -4,8 +4,9 @@ import { mutate, readDb } from "./db";
 import { errorMessage } from "./jobs";
 import { absPath, download, extFromContentType, newPath, removeFile, type Bucket } from "./storage";
 import { concatClips, mixNarration, probe } from "./ffmpeg";
-import { getImageModel, getVideoModel } from "./providers/catalog";
+import { getImageModel, getVideoModel, hasFalKey } from "./providers/catalog";
 import { falAddAmbient, falImage, falVideo } from "./providers/fal";
+import { googleImage, googleVideo } from "./providers/google";
 import { mockImage, mockSpeech, mockVideo } from "./providers/mock";
 import { fishTts } from "./providers/fish";
 import type { Character, Project, Scene } from "./types";
@@ -27,7 +28,14 @@ async function materialize(source: string, bucket: Bucket, fallbackExt: string):
 async function createImage(modelId: string, prompt: string, aspect: string, refs: string[]): Promise<string> {
   const model = getImageModel(modelId);
   if (!model) throw new Error(`未知の画像モデル: ${modelId}`);
-  return model.provider === "mock" ? mockImage(prompt, aspect) : falImage(model, prompt, aspect, refs);
+  switch (model.provider) {
+    case "mock":
+      return mockImage(prompt, aspect);
+    case "google":
+      return googleImage(model, prompt, aspect, refs);
+    default:
+      return falImage(model, prompt, aspect, refs);
+  }
 }
 
 // ---------- ① キャラクター ----------
@@ -119,12 +127,14 @@ export async function generateSceneVideo(id: string) {
     const src =
       model.provider === "mock"
         ? await mockVideo(s.imagePath, duration)
-        : await falVideo(model, motion, s.imagePath, duration);
+        : model.provider === "google"
+          ? await googleVideo(model, motion, s.imagePath, s.aspect, duration)
+          : await falVideo(model, motion, s.imagePath, duration);
     let videoPath = await materialize(src, "videos", "mp4");
     let info = await probe(videoPath);
 
-    // 音声を生成しないモデルは MMAudio で環境音を付与
-    if (!info.hasAudio && model.provider === "fal") {
+    // 音声が無い動画は MMAudio（fal.ai）で環境音を付与。fal.ai 未設定なら無音のまま（結合時に無音を補う）
+    if (!info.hasAudio && model.provider !== "mock" && hasFalKey()) {
       const withAudio = await falAddAmbient(videoPath, motion, info.duration || duration);
       const newRel = await materialize(withAudio, "videos", "mp4");
       await removeFile(videoPath);
