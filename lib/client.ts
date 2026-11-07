@@ -94,6 +94,12 @@ export function pickDefault<T extends { id: string; provider: string; available:
   return current;
 }
 
+/** スマホなど1列表示のとき、指定した場所までスクロールする（2列表示の PC では何もしない） */
+export function scrollToOnNarrow(id: string) {
+  if (typeof window === "undefined" || window.matchMedia("(min-width: 1280px)").matches) return;
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 export function hasAnyAiKey(info: ModelInfo | null) {
   return !info || info.keys.google || info.keys.fal;
 }

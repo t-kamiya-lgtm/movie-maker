@@ -58,6 +58,24 @@ npm run dev
 
 http://localhost:3000 を開きます。
 
+## Google Cloud の VM で動かす（スマホから使う）
+
+パソコンを閉じていても、スマホから使えるようにする方法です。
+
+1. Compute Engine で VM を作成する（例: e2-small、東京リージョン、Debian 12、ディスク 20GB、「HTTP / HTTPS トラフィックを許可」にチェック）
+2. VM の「SSH」ボタンで開いた画面で、次を実行する
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/t-kamiya-lgtm/movie-maker/claude/trusting-brown-wnh4h3/deploy/setup-vm.sh -o setup-vm.sh
+```
+
+```bash
+sudo bash setup-vm.sh
+```
+
+途中で API キーとログイン用パスワードを聞かれます。完了すると `https://<IPアドレス>.sslip.io` が表示されるので、スマホで開いてログインします。
+アプリの更新は `sudo bash /opt/movie-maker/deploy/update.sh` です。
+
 ## データの保存先
 
 生成した画像・動画・音声とデータベース（`db.json`）は `storage/` に保存されます（`STORAGE_DIR` で変更可）。

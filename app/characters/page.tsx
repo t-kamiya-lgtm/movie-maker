@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, aspectStyle, hasAnyAiKey, pickDefault, useModels, usePolled, type CharacterView } from "@/lib/client";
+import {
+  api,
+  aspectStyle,
+  hasAnyAiKey,
+  pickDefault,
+  scrollToOnNarrow,
+  useModels,
+  usePolled,
+  type CharacterView,
+} from "@/lib/client";
 import { AspectSelect } from "@/components/AspectSelect";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
 import { Badge, Button, Empty, Field, KeyWarning, Panel, Select, Spinner, inputCls } from "@/components/ui";
@@ -62,6 +71,7 @@ export default function CharactersPage() {
       }
       await api("/api/characters", { method: "POST", body: fd });
       await reload();
+      scrollToOnNarrow("character-results");
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
@@ -165,7 +175,7 @@ export default function CharactersPage() {
         </Panel>
       </div>
 
-      <div className="space-y-3">
+      <div id="character-results" className="scroll-mt-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-white/80">ストレージ（{shown.length}）</h2>
           <Select className="!w-auto py-1 text-xs" value={kindFilter} onChange={(e) => setKindFilter(e.target.value as AssetKind | "")}>
@@ -232,7 +242,7 @@ function CharacterCard({
         </div>
         <button
           onClick={onDelete}
-          className="absolute right-2 top-2 hidden rounded-md bg-black/70 px-1.5 text-xs text-white/80 hover:text-red-300 group-hover:block"
+          className="absolute right-2 top-2 hidden rounded-md bg-black/70 px-2 py-1 text-xs text-white/80 hover:text-red-300 group-hover:block [@media(hover:none)]:block"
         >
           削除
         </button>

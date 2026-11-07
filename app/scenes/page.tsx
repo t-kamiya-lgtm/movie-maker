@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   api,
   aspectStyle,
   hasAnyAiKey,
   pickDefault,
+  scrollToOnNarrow,
   useModels,
   usePolled,
   type CharacterView,
@@ -90,6 +91,7 @@ export default function ScenesPage() {
         },
       });
       await reload();
+      scrollToOnNarrow("scene-results");
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
@@ -105,6 +107,7 @@ export default function ScenesPage() {
       });
       setMsg(`${r.started.length} 件の動画生成を開始しました`);
       await reload();
+      scrollToOnNarrow("scene-results");
     } catch (e) {
       setMsg((e as Error).message);
     }
@@ -208,6 +211,7 @@ export default function ScenesPage() {
           </div>
         </Panel>
 
+        <div id="scene-actions" className="scroll-mt-4" />
         <Panel title={`選択中のシーン（${selected.length}）`}>
           <div className="space-y-3">
             <Field label="動画モデル" hint={vm && !vm.nativeAudio ? "生成後に MMAudio で環境音を自動付与します" : "モデルが環境音を生成します"}>
@@ -266,7 +270,7 @@ export default function ScenesPage() {
         </Panel>
       </div>
 
-      <div className="space-y-3">
+      <div id="scene-results" className="scroll-mt-4 space-y-3 pb-20 xl:pb-0">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-white/80">ストレージ（{shown.length}）</h2>
           <label className="flex items-center gap-1 text-xs text-white/70">
@@ -309,6 +313,22 @@ export default function ScenesPage() {
           </div>
         )}
       </div>
+
+      {/* スマホ用：選択中のときだけ下に出る操作バー（動画化の設定まで戻る） */}
+      {selected.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-line bg-black/90 p-3 backdrop-blur xl:hidden">
+          <span className="flex-1 text-sm">{selected.length} 件選択中</span>
+          <Button variant="ghost" className="text-xs" onClick={() => setSelected([])}>
+            解除
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => document.getElementById("scene-actions")?.scrollIntoView({ behavior: "smooth" })}
+          >
+            動画化・③へ送る ↑
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -372,6 +392,20 @@ function SceneCard({
     await api(`/api/scenes/${s.id}`, { method: "DELETE" });
     onChanged();
   };
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  // 音あり再生（スマホはホバーできないのでボタンで再生する）
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.muted = false;
+      void v.play().then(() => setPlaying(true)).catch(() => undefined);
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  };
 
   return (
     <div className={`group overflow-hidden rounded-xl border bg-panel ${selected ? "border-accent ring-2 ring-accent/40" : "border-line"}`}>
@@ -386,14 +420,17 @@ function SceneCard({
           </div>
         ) : s.videoUrl ? (
           <video
+            ref={videoRef}
             src={s.videoUrl}
             poster={s.imageUrl}
             loop
             playsInline
             muted
+            preload="metadata"
             className="h-full w-full object-cover"
-            onMouseEnter={(e) => void e.currentTarget.play().catch(() => undefined)}
-            onMouseLeave={(e) => e.currentTarget.pause()}
+            onMouseEnter={(e) => !playing && void e.currentTarget.play().catch(() => undefined)}
+            onMouseLeave={(e) => !playing && e.currentTarget.pause()}
+            onPause={() => setPlaying(false)}
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
@@ -404,20 +441,36 @@ function SceneCard({
             <Spinner label="動画生成中…" />
           </div>
         )}
-        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+        <div className="absolute left-2 top-2 flex max-w-[calc(100%-6.5rem)] flex-wrap gap-1">
           <input type="checkbox" checked={selected} readOnly className="accent-[#7c5cff]" />
           {s.videoStatus === "ready" && <Badge tone="accent">▶ {s.duration?.toFixed(1)}s{s.hasAudio ? " ♪" : ""}</Badge>}
           {charNames.map((n) => (
             <Badge key={n}>{n}</Badge>
           ))}
         </div>
-        <div className="absolute right-2 top-2 hidden gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
+        {s.videoUrl && s.videoStatus === "ready" && (
+          <button
+            className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1.5 text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            title="音ありで再生"
+          >
+            {playing ? "❚❚ 停止" : "▶ 音あり再生"}
+          </button>
+        )}
+        {/* マウスではホバー時、スマホ（ホバー不可）では常に表示 */}
+        <div
+          className="absolute right-2 top-2 hidden gap-1 group-hover:flex [@media(hover:none)]:flex"
+          onClick={(e) => e.stopPropagation()}
+        >
           {s.imageStatus !== "pending" && (
-            <button className="rounded-md bg-black/70 px-1.5 text-xs" onClick={() => patch({ regenerateImage: true })} title="画像を再生成">
+            <button className="rounded-md bg-black/70 px-2 py-1 text-xs" onClick={() => patch({ regenerateImage: true })} title="画像を再生成">
               ↻
             </button>
           )}
-          <button className="rounded-md bg-black/70 px-1.5 text-xs hover:text-red-300" onClick={remove}>
+          <button className="rounded-md bg-black/70 px-2 py-1 text-xs hover:text-red-300" onClick={remove}>
             削除
           </button>
         </div>
