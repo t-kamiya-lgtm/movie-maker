@@ -14,7 +14,7 @@ const ITEMS = [
 export function Nav() {
   const path = usePathname();
   return (
-    <nav className="flex gap-1 overflow-x-auto md:flex-col">
+    <nav className="flex min-w-0 gap-1 overflow-x-auto">
       {ITEMS.map((it) => {
         const active = it.href === "/" ? path === "/" : path.startsWith(it.href);
         return (

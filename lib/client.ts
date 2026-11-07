@@ -95,10 +95,16 @@ export function pickDefault<T extends { id: string; provider: string; available:
   return current;
 }
 
-/** スマホなど1列表示のとき、指定した場所までスクロールする（2列表示の PC では何もしない） */
+/**
+ * 生成後に結果の一覧を見せる。
+ * スマホなど1列表示: 一覧の位置までページをスクロール / PC の2列表示: 一覧（右側）を先頭まで戻す（新しい画像は先頭に出る）
+ */
 export function scrollToOnNarrow(id: string) {
-  if (typeof window === "undefined" || window.matchMedia("(min-width: 1280px)").matches) return;
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (typeof window === "undefined") return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (window.matchMedia("(min-width: 1280px)").matches) el.scrollTo({ top: 0, behavior: "smooth" });
+  else el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function hasAnyAiKey(info: ModelInfo | null) {

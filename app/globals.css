@@ -12,6 +12,15 @@ body {
   font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
 }
 
+/* PC（1280px 以上）: ヘッダー（3.5rem）と余白を除いた高さに収め、中だけをスクロールさせる */
+@media (min-width: 1280px) {
+  .work-pane {
+    position: sticky;
+    top: 4.75rem;
+    height: calc(100dvh - 6rem);
+  }
+}
+
 ::-webkit-scrollbar {
   height: 8px;
   width: 8px;

@@ -58,7 +58,7 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
     accent: "bg-accent/80 text-white",
     warn: "bg-amber-500/80 text-black",
   }[tone];
-  return <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-medium backdrop-blur ${c}`}>{children}</span>;
+  return <span className={`inline-block whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium backdrop-blur ${c}`}>{children}</span>;
 }
 
 export function Spinner({ label }: { label?: string }) {

@@ -139,8 +139,9 @@ export default function ScenesPage() {
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-      <div className="space-y-4">
+    // PC（xl 以上）: 左＝生成・動画化メニュー、右＝一覧。それぞれ別々にスクロールする
+    <div className="grid gap-6 xl:grid-cols-[minmax(460px,34%)_1fr]">
+      <div className="work-pane space-y-4 xl:overflow-y-auto xl:pr-1">
         <h1 className="text-xl font-bold">② シーン素材の量産</h1>
         <KeyWarning show={!hasAnyAiKey(models)}>
           GEMINI_API_KEY（Google）も FAL_KEY も未設定のため、モックモデルで動作します。
@@ -270,7 +271,7 @@ export default function ScenesPage() {
         </Panel>
       </div>
 
-      <div id="scene-results" className="scroll-mt-4 space-y-3 pb-20 xl:pb-0">
+      <div id="scene-results" className="work-pane scroll-mt-4 space-y-3 pb-20 xl:overflow-y-auto xl:pb-0 xl:pr-1">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-white/80">ストレージ（{shown.length}）</h2>
           <label className="flex items-center gap-1 text-xs text-white/70">

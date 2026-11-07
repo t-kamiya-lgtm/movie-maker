@@ -15,7 +15,7 @@ import {
 import { PROFILE_FIELDS, attributeList } from "@/lib/profile";
 import { AspectSelect } from "@/components/AspectSelect";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
-import { Badge, Button, Empty, Field, KeyWarning, Panel, Select, Spinner, inputCls } from "@/components/ui";
+import { Badge, Button, Empty, Field, KeyWarning, Select, Spinner, inputCls } from "@/components/ui";
 import type { AssetKind } from "@/lib/types";
 
 const KIND_LABEL: Record<AssetKind, string> = { character: "人物", item: "商品・小物" };
@@ -132,24 +132,28 @@ export default function CharactersPage() {
   const showPersonal = (profile?.kind ?? kind) === "character";
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-      <div className="space-y-4">
-        <h1 className="text-xl font-bold">① キャラクター・商品</h1>
-        <KeyWarning show={!hasAnyAiKey(models)}>
-          GEMINI_API_KEY（Google）も FAL_KEY も未設定です。「モック」モデルのみ利用できます。
-        </KeyWarning>
-        <Panel>
-          <div className="mb-3 flex gap-1 rounded-lg bg-black/40 p-1 text-sm">
+    // PC（xl 以上）: 左＝生成メニュー、右＝一覧。それぞれ別々にスクロールし、ページ全体はスクロールしない
+    <div className="grid gap-6 xl:grid-cols-[minmax(640px,50%)_1fr]">
+      <div className="work-pane flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold">① キャラクター・商品</h1>
+          <div className="ml-auto flex gap-1 rounded-lg bg-black/40 p-1 text-sm">
             {(["generate", "upload"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`flex-1 rounded-md py-1.5 ${mode === m ? "bg-white/10 text-white" : "text-white/50"}`}
+                className={`rounded-md px-3 py-1 ${mode === m ? "bg-white/10 text-white" : "text-white/50"}`}
               >
                 {m === "generate" ? "AIで生成" : "画像をアップロード"}
               </button>
             ))}
           </div>
+        </div>
+        <KeyWarning show={!hasAnyAiKey(models)}>
+          GEMINI_API_KEY（Google）も FAL_KEY も未設定です。「モック」モデルのみ利用できます。
+        </KeyWarning>
+        <div className="min-h-0 flex-1 space-y-3 rounded-2xl border border-line bg-panel p-4 xl:overflow-y-auto">
+          <div className="grid gap-3 xl:grid-cols-2 xl:gap-x-5">
           <div className="space-y-3">
             {profiles.length > 0 && (
               <Field label="過去の人物・商品から選ぶ">
@@ -215,39 +219,25 @@ export default function CharactersPage() {
                 </div>
               ))}
 
-            {showPersonal && (
-              <details className="rounded-lg border border-line p-2.5" open={isExisting || Object.keys(attrs).length > 0}>
-                <summary className="cursor-pointer text-xs font-medium text-white/70">
-                  パーソナルデータ（{Object.values(attrs).filter(Boolean).length}/{PROFILE_FIELDS.length} 項目）
-                </summary>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {PROFILE_FIELDS.map((f) => (
-                    <label key={f.key} className={`block space-y-0.5 ${f.key === "notes" ? "col-span-2" : ""}`}>
-                      <span className="text-[11px] text-white/50">{f.label}</span>
-                      <input
-                        className={`${inputCls} py-1 text-xs`}
-                        value={attrs[f.key] ?? ""}
-                        placeholder={f.placeholder}
-                        onChange={(e) => setAttrs({ ...attrs, [f.key]: e.target.value })}
-                      />
-                    </label>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] text-white/40">
-                  見た目の項目は画像に反映し、性格・趣味などは雰囲気づけに使います。生成すると、この人物のプロフィールとして保存されます。
-                </p>
-              </details>
-            )}
             {mode === "generate" ? (
+              <Field label="プロンプト" hint="服装・場面・ポーズ・撮影スタイルなどを具体的に">
+                <textarea
+                  className={`${inputCls} h-32`}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="20代の日本人女性、黒髪ロング、白いTシャツ、自然光の室内。友人が撮ったような自然なスナップ写真"
+                />
+              </Field>
+            ) : (
+              <Field label="画像ファイル">
+                <input type="file" accept="image/*" onChange={(e) => setUpload(e.target.files?.[0] ?? null)} className="text-xs" />
+              </Field>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {mode === "generate" && (
               <>
-                <Field label="プロンプト" hint="人物の特徴・服装・背景・撮影スタイルなどを具体的に">
-                  <textarea
-                    className={`${inputCls} h-28`}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="20代の日本人女性、黒髪ロング、白いTシャツ、自然光の室内、iPhoneで撮ったようなリアルな自撮り写真"
-                  />
-                </Field>
                 <Field label="画像モデル">
                   <Select value={model} onChange={(e) => setModel(e.target.value)}>
                     {models?.imageModels.map((m) => (
@@ -265,10 +255,6 @@ export default function CharactersPage() {
                   <input type="range" min={1} max={8} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-full" />
                 </Field>
               </>
-            ) : (
-              <Field label="画像ファイル">
-                <input type="file" accept="image/*" onChange={(e) => setUpload(e.target.files?.[0] ?? null)} className="text-xs" />
-              </Field>
             )}
             {models && (
               <Field label="サイズ">
@@ -278,15 +264,44 @@ export default function CharactersPage() {
             <Field label="タグ">
               <TagEditor tags={tags} onChange={setTags} suggestions={allTags} />
             </Field>
-            {msg && <p className="text-xs text-red-300">{msg}</p>}
-            <Button variant="primary" className="w-full py-2" disabled={busy || !name} onClick={submit}>
-              {mode === "generate" ? "生成する" : "登録する"}
-            </Button>
           </div>
-        </Panel>
+          </div>
+
+          {showPersonal && (
+            <details className="rounded-lg border border-line p-2.5" open={isExisting || Object.keys(attrs).length > 0}>
+              <summary className="cursor-pointer text-xs font-medium text-white/70">
+                パーソナルデータ（{Object.values(attrs).filter(Boolean).length}/{PROFILE_FIELDS.length} 項目）
+              </summary>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {PROFILE_FIELDS.map((f) => (
+                  <label key={f.key} className={`block space-y-0.5 ${f.key === "notes" ? "col-span-2 sm:col-span-3" : ""}`}>
+                    <span className="text-[11px] text-white/50">{f.label}</span>
+                    <input
+                      className={`${inputCls} py-1 text-xs`}
+                      value={attrs[f.key] ?? ""}
+                      placeholder={f.placeholder}
+                      onChange={(e) => setAttrs({ ...attrs, [f.key]: e.target.value })}
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-white/40">
+                見た目の項目は画像に反映し、性格・趣味などは雰囲気づけに使います。生成すると、この人物のプロフィールとして保存されます。
+              </p>
+            </details>
+          )}
+        </div>
+
+        {/* 生成ボタンは常に見える位置に固定 */}
+        <div className="flex items-center gap-3">
+          {msg && <p className="flex-1 text-xs text-red-300">{msg}</p>}
+          <Button variant="primary" className={`py-2.5 ${msg ? "" : "w-full"}`} disabled={busy || !name} onClick={submit}>
+            {mode === "generate" ? `生成する（${count}枚）` : "登録する"}
+          </Button>
+        </div>
       </div>
 
-      <div id="character-results" className="scroll-mt-4 space-y-3">
+      <div id="character-results" className="work-pane scroll-mt-4 space-y-3 xl:overflow-y-auto xl:pr-1">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-white/80">ストレージ（{shown.length}）</h2>
           <Select className="!w-auto py-1 text-xs" value={kindFilter} onChange={(e) => setKindFilter(e.target.value as AssetKind | "")}>
