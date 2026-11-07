@@ -17,6 +17,27 @@ export interface Character {
   status: Status;
   error?: string;
   createdAt: number;
+  /** 生成時のパーソナルデータ（その時点のスナップショット） */
+  attributes?: Record<string, string>;
+  /** 顔の見本として参照した画像（同じ名前の基準画像）の ID */
+  refCharacterId?: string;
+  /** 構図: bust = バストアップ（新しい人物の最初の生成） */
+  framing?: "bust" | "free";
+}
+
+/** 名前ごとの人物（または商品）プロフィール。同じ名前の画像はこのプロフィールを共有する */
+export interface Profile {
+  id: string;
+  name: string;
+  kind: AssetKind;
+  /** 前回使ったプロンプト（次回の入力欄に表示） */
+  prompt: string;
+  /** パーソナルデータ（年齢・身長など） */
+  attributes: Record<string, string>;
+  /** 顔の基準画像（Character の ID） */
+  anchorId?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Scene {
@@ -94,6 +115,7 @@ export interface Project {
 
 export interface DB {
   characters: Character[];
+  profiles: Profile[];
   scenes: Scene[];
   projects: Project[];
 }

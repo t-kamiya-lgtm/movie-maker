@@ -9,6 +9,8 @@ import { falAddAmbient, falImage, falVideo } from "./providers/fal";
 import { googleImage, googleVideo } from "./providers/google";
 import { mockImage, mockSpeech, mockVideo } from "./providers/mock";
 import { fishTts } from "./providers/fish";
+import { PHOTO_STYLE, buildCharacterPrompt } from "./profile";
+import { ensureProfiles } from "./profiles";
 import type { Character, Project, Scene } from "./types";
 
 /** URL またはストレージ内の一時ファイルを、指定バケットに保存し直す */
@@ -45,11 +47,24 @@ export async function generateCharacter(id: string, referencePaths: string[]) {
   const c = db.characters.find((x) => x.id === id);
   if (!c) return;
   try {
-    const src = await createImage(c.model, c.prompt, c.aspect, referencePaths);
+    // 同じ名前の基準画像を「顔の見本」として先頭に渡す
+    const anchor = c.refCharacterId ? db.characters.find((x) => x.id === c.refCharacterId) : undefined;
+    const anchorPath = anchor?.status === "ready" ? anchor.imagePath : undefined;
+    const refs = anchorPath ? [anchorPath, ...referencePaths] : referencePaths;
+    const prompt = buildCharacterPrompt({
+      name: c.name,
+      kind: c.kind ?? "character",
+      prompt: c.prompt,
+      attributes: c.attributes,
+      hasAnchor: !!anchorPath,
+      framing: c.framing,
+    });
+    const src = await createImage(c.model, prompt, c.aspect, refs);
     const imagePath = await materialize(src, "characters", "png");
     await mutate((d) => {
       const t = d.characters.find((x) => x.id === id);
       if (t) Object.assign(t, { imagePath, status: "ready", error: undefined });
+      ensureProfiles(d); // 新しい人物なら、この画像が基準画像になる
     });
   } catch (err) {
     await mutate((d) => {
@@ -81,10 +96,7 @@ export function referenceInstructions(people: Character[], items: Character[]): 
     lines.push("Do not copy the background or clothing of the person reference images unless the scene description asks for it.");
   }
   // 「スマホで撮ったような」と書くとスマホ自体が写り込みやすいので、質感と写す物を分けて指示する
-  lines.push(
-    "Photo style: photorealistic candid snapshot with natural lighting and the look of a phone camera (unedited, everyday feel). " +
-      "This describes only the photo quality: do not show a smartphone or camera in the image unless the scene description explicitly asks for it.",
-  );
+  lines.push(PHOTO_STYLE);
   return lines.join("\n");
 }
 

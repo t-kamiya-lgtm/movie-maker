@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AspectPreset } from "./aspect";
-import type { Character, Narration, Project, Scene } from "./types";
+import type { Character, Narration, Profile, Project, Scene } from "./types";
 
 export type CharacterView = Character & { imageUrl?: string };
+export type ProfileView = Profile & { anchorUrl?: string; imageCount: number };
 export type SceneView = Scene & { imageUrl?: string; videoUrl?: string };
 export type NarrationView = Narration & { audioUrl?: string };
 export type ProjectView = Omit<Project, "narrations"> & {

@@ -21,11 +21,12 @@ async function load(): Promise<DB> {
     const parsed = JSON.parse(raw) as Partial<DB>;
     g.__mmDb = {
       characters: parsed.characters ?? [],
+      profiles: parsed.profiles ?? [],
       scenes: parsed.scenes ?? [],
       projects: parsed.projects ?? [],
     };
   } catch {
-    g.__mmDb = { characters: [], scenes: [], projects: [] };
+    g.__mmDb = { characters: [], profiles: [], scenes: [], projects: [] };
   }
   return g.__mmDb;
 }
