@@ -222,7 +222,9 @@ function CharacterCard({
             <Spinner label="生成中…" />
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center p-3 text-center text-[11px] text-red-300">{c.error}</div>
+          <div className="h-full overflow-y-auto whitespace-pre-wrap break-words p-3 pt-9 text-[11px] leading-relaxed text-red-300">
+            {c.error}
+          </div>
         )}
         <div className="absolute left-2 top-2 flex gap-1">
           <Badge tone="accent">{c.name}</Badge>

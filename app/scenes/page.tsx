@@ -381,7 +381,9 @@ function SceneCard({
             <Spinner label="画像生成中…" />
           </div>
         ) : s.imageStatus === "error" ? (
-          <div className="flex h-full items-center justify-center p-3 text-center text-[11px] text-red-300">{s.imageError}</div>
+          <div className="h-full overflow-y-auto whitespace-pre-wrap break-words p-3 pt-9 text-[11px] leading-relaxed text-red-300">
+            {s.imageError}
+          </div>
         ) : s.videoUrl ? (
           <video
             src={s.videoUrl}
@@ -424,7 +426,7 @@ function SceneCard({
         <p className="line-clamp-2 text-[11px] text-white/50" title={s.prompt}>
           {s.prompt}
         </p>
-        {s.videoStatus === "error" && <p className="text-[11px] text-red-300">動画: {s.videoError}</p>}
+        {s.videoStatus === "error" && <p className="whitespace-pre-wrap break-words text-[11px] text-red-300">動画: {s.videoError}</p>}
         <TagEditor tags={s.tags} suggestions={allTags} onChange={(t) => patch({ tags: t })} />
       </div>
     </div>

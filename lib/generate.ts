@@ -80,7 +80,11 @@ export function referenceInstructions(people: Character[], items: Character[]): 
   if (people.length) {
     lines.push("Do not copy the background or clothing of the person reference images unless the scene description asks for it.");
   }
-  lines.push("Photorealistic, natural lighting, looks like a casual smartphone photo.");
+  // 「スマホで撮ったような」と書くとスマホ自体が写り込みやすいので、質感と写す物を分けて指示する
+  lines.push(
+    "Photo style: photorealistic candid snapshot with natural lighting and the look of a phone camera (unedited, everyday feel). " +
+      "This describes only the photo quality: do not show a smartphone or camera in the image unless the scene description explicitly asks for it.",
+  );
   return lines.join("\n");
 }
 
