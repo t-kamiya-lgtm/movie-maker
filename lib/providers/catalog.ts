@@ -42,6 +42,9 @@ export interface VideoModelDef {
 
 const NB_RATIOS = ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"];
 
+/** パーソナルデータの自動推定に使う Gemini の文章モデル（画像も読める） */
+export const TEXT_MODEL = "gemini-2.5-flash";
+
 /** Veo が対応している比率（それ以外は結合時に切り抜き / 余白で調整） */
 export const VEO_RATIOS = ["16:9", "9:16"];
 

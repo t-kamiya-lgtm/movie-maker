@@ -4,13 +4,13 @@ import { mutate, readDb } from "./db";
 import { errorMessage } from "./jobs";
 import { absPath, download, extFromContentType, newPath, removeFile, type Bucket } from "./storage";
 import { concatClips, mixNarration, probe } from "./ffmpeg";
-import { getImageModel, getVideoModel, hasFalKey } from "./providers/catalog";
+import { getImageModel, getVideoModel, hasFalKey, hasGoogleKey } from "./providers/catalog";
 import { falAddAmbient, falImage, falVideo } from "./providers/fal";
-import { googleImage, googleVideo } from "./providers/google";
+import { googleEstimateProfile, googleImage, googleVideo } from "./providers/google";
 import { mockImage, mockSpeech, mockVideo } from "./providers/mock";
 import { fishTts } from "./providers/fish";
-import { PHOTO_STYLE, buildCharacterPrompt } from "./profile";
-import { ensureProfiles } from "./profiles";
+import { PHOTO_STYLE, PROFILE_FIELDS, buildCharacterPrompt } from "./profile";
+import { ensureProfiles, findProfile } from "./profiles";
 import type { Character, Project, Scene } from "./types";
 
 /** URL またはストレージ内の一時ファイルを、指定バケットに保存し直す */
@@ -63,9 +63,14 @@ export async function generateCharacter(id: string, referencePaths: string[]) {
     const imagePath = await materialize(src, "characters", "png");
     await mutate((d) => {
       const t = d.characters.find((x) => x.id === id);
-      if (t) Object.assign(t, { imagePath, status: "ready", error: undefined });
+      if (t) {
+        Object.assign(t, { imagePath, status: "ready", error: undefined });
+        // パーソナルデータの推定が終わるまで、画面は更新を続ける
+        t.estimating = hasGoogleKey() && (t.kind ?? "character") === "character";
+      }
       ensureProfiles(d); // 新しい人物なら、この画像が基準画像になる
     });
+    await fillProfileFromImage(id);
   } catch (err) {
     await mutate((d) => {
       const t = d.characters.find((x) => x.id === id);
@@ -73,6 +78,51 @@ export async function generateCharacter(id: string, referencePaths: string[]) {
     });
   } finally {
     for (const r of referencePaths) if (r.startsWith("tmp/")) await removeFile(r);
+  }
+}
+
+/**
+ * 人物の画像から、パーソナルデータの空欄を AI（Gemini の文章モデル）で推定して埋める。
+ * 自分で入力した項目は上書きしない。Google のキーがない場合や失敗した場合は何もしない。
+ */
+export async function fillProfileFromImage(characterId: string) {
+  try {
+    await estimateProfile(characterId);
+  } finally {
+    await mutate((d) => {
+      const t = d.characters.find((x) => x.id === characterId);
+      if (t) t.estimating = false;
+    });
+  }
+}
+
+async function estimateProfile(characterId: string) {
+  if (!hasGoogleKey()) return;
+  const db = await readDb();
+  const c = db.characters.find((x) => x.id === characterId);
+  if (!c?.imagePath || c.status !== "ready" || (c.kind ?? "character") !== "character") return;
+  const profile = findProfile(db, c.name);
+  const current = { ...(profile?.attributes ?? {}), ...(c.attributes ?? {}) };
+  const missing = PROFILE_FIELDS.filter((f) => !current[f.key]);
+  if (missing.length === 0) return;
+  try {
+    const estimated = await googleEstimateProfile(
+      c.imagePath,
+      c.prompt === "(アップロード)" ? "" : c.prompt,
+      Object.fromEntries(missing.map((f) => [f.key, f.label])),
+    );
+    if (Object.keys(estimated).length === 0) return;
+    await mutate((d) => {
+      const t = d.characters.find((x) => x.id === characterId);
+      if (t) t.attributes = { ...estimated, ...(t.attributes ?? {}) };
+      const p = findProfile(d, c.name);
+      if (p) {
+        p.attributes = { ...estimated, ...p.attributes };
+        p.updatedAt = Date.now();
+      }
+    });
+  } catch (err) {
+    console.error("[profile-estimate]", errorMessage(err));
   }
 }
 
@@ -107,19 +157,29 @@ export async function generateSceneImage(id: string) {
   const assets = s.characterIds
     .map((cid) => db.characters.find((c) => c.id === cid))
     .filter((c): c is Character => !!c?.imagePath);
-  // 人物 → 商品・小物 の順に参照画像を渡し、それぞれの役割を明示する
-  const people = assets.filter((c) => (c.kind ?? "character") === "character");
-  const items = assets.filter((c) => c.kind === "item");
+  // 人物 → 商品・小物 の順に参照画像を渡し、それぞれの役割を明示する（同じ名前は 1 枚にまとめる）
+  const firstPerName = (list: Character[]) => list.filter((c, i) => list.findIndex((x) => x.name === c.name) === i);
+  const people = firstPerName(assets.filter((c) => (c.kind ?? "character") === "character"));
+  const items = firstPerName(assets.filter((c) => c.kind === "item"));
   const ordered = [...people, ...items];
   const refs = ordered.map((c) => c.imagePath!);
   const prompt = ordered.length ? `${s.prompt}\n\n${referenceInstructions(people, items)}` : s.prompt;
   try {
     const src = await createImage(s.imageModel, prompt, s.aspect, refs);
     const imagePath = await materialize(src, "scenes", "png");
-    await mutate((d) => {
+    const thenVideo = await mutate((d) => {
       const t = d.scenes.find((x) => x.id === id);
-      if (t) Object.assign(t, { imagePath, imageStatus: "ready", imageError: undefined });
+      if (!t) return false;
+      Object.assign(t, { imagePath, imageStatus: "ready", imageError: undefined });
+      // 「画像と一緒に動画も作る」が選ばれていれば、続けて動画化する
+      if (t.autoVideo && t.videoModel) {
+        t.videoStatus = "pending";
+        t.videoError = undefined;
+        return true;
+      }
+      return false;
     });
+    if (thenVideo) await generateSceneVideo(id);
   } catch (err) {
     await mutate((d) => {
       const t = d.scenes.find((x) => x.id === id);

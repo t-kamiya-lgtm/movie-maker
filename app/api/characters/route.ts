@@ -2,10 +2,10 @@ import { randomUUID } from "crypto";
 import { bad, json, normTags, viewCharacter } from "@/lib/api";
 import { mutate, now, readDb } from "@/lib/db";
 import { runInBackground } from "@/lib/jobs";
-import { generateCharacter } from "@/lib/generate";
+import { fillProfileFromImage, generateCharacter } from "@/lib/generate";
 import { saveBuffer } from "@/lib/storage";
 import { DEFAULT_ASPECT } from "@/lib/aspect";
-import { getImageModel } from "@/lib/providers/catalog";
+import { getImageModel, hasGoogleKey } from "@/lib/providers/catalog";
 import { cleanAttributes } from "@/lib/profile";
 import { anchorOf, ensureProfiles, findProfile } from "@/lib/profiles";
 import type { AssetKind, Character } from "@/lib/types";
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
         status: "ready",
         createdAt: now(),
         attributes: existing?.attributes ?? attributes,
+        estimating: hasGoogleKey() && (existing?.kind ?? formKind) === "character",
       };
       db.characters.push(c);
       if (!existing) {
@@ -84,6 +85,8 @@ export async function POST(req: Request) {
       ensureProfiles(db);
       return c;
     });
+    // パーソナルデータの空欄を AI で推定して埋める（Google のキーがある場合）
+    runInBackground(`profile-estimate:${c.id}`, () => fillProfileFromImage(c.id));
     return json([viewCharacter(c)]);
   }
 

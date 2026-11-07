@@ -4,7 +4,7 @@ import { mutate, now, readDb } from "@/lib/db";
 import { runInBackground } from "@/lib/jobs";
 import { generateSceneImage } from "@/lib/generate";
 import { DEFAULT_ASPECT } from "@/lib/aspect";
-import { getImageModel } from "@/lib/providers/catalog";
+import { getImageModel, getVideoModel } from "@/lib/providers/catalog";
 import type { Scene } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -38,11 +38,17 @@ export async function POST(req: Request) {
     imageModel?: string;
     aspect?: string;
     tags?: unknown;
+    /** 画像ができたら続けて動画化する */
+    video?: { videoModel?: string; motionPrompt?: string; duration?: number } | null;
   };
   const prompts = (body.prompts ?? []).map((p) => p.trim()).filter(Boolean);
   if (!prompts.length) return bad("シーンのプロンプトを入力してください");
   const imageModel = body.imageModel || "nano-banana";
   if (!getImageModel(imageModel)) return bad("画像モデルが不正です");
+  const vModel = body.video ? getVideoModel(body.video.videoModel || "") : undefined;
+  if (body.video && !vModel) return bad("動画モデルを選択してください");
+  const vDuration =
+    vModel && vModel.durations.includes(Number(body.video?.duration)) ? Number(body.video?.duration) : vModel?.durations[0];
   const count = Math.min(8, Math.max(1, Number(body.countPerPrompt || 1)));
   if (prompts.length * count > 40) return bad("一度に生成できるのは 40 枚までです");
 
@@ -63,6 +69,14 @@ export async function POST(req: Request) {
         imageModel,
         imageStatus: "pending",
         videoStatus: "none",
+        ...(vModel
+          ? {
+              autoVideo: true,
+              videoModel: vModel.id,
+              motionPrompt: body.video?.motionPrompt?.trim() || undefined,
+              duration: vDuration,
+            }
+          : {}),
         tags,
         createdAt: t0 + pi * count + i,
       });

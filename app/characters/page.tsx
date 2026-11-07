@@ -14,6 +14,7 @@ import {
 } from "@/lib/client";
 import { PROFILE_FIELDS, attributeList } from "@/lib/profile";
 import { AspectSelect } from "@/components/AspectSelect";
+import { Lightbox, type LightboxItem } from "@/components/Lightbox";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
 import { Badge, Button, Empty, Field, KeyWarning, Select, Spinner, inputCls } from "@/components/ui";
 import type { AssetKind } from "@/lib/types";
@@ -22,10 +23,12 @@ const KIND_LABEL: Record<AssetKind, string> = { character: "人物", item: "商�
 
 export default function CharactersPage() {
   const models = useModels();
-  const { data, reload, error } = usePolled<CharacterView[]>("/api/characters", (d) => d.some((c) => c.status === "pending"));
+  const { data, reload, error } = usePolled<CharacterView[]>("/api/characters", (d) =>
+    d.some((c) => c.status === "pending" || c.estimating),
+  );
   const { data: profileData, reload: reloadProfiles } = usePolled<ProfileView[]>("/api/profiles", () => false);
   // 画像の状態が変わったら（生成完了・削除など）プロフィールも取り直す（基準画像の更新のため）
-  const charSignature = (data ?? []).map((c) => `${c.id}:${c.status}:${c.name}`).join(",");
+  const charSignature = (data ?? []).map((c) => `${c.id}:${c.status}:${c.name}:${c.estimating ? 1 : 0}`).join(",");
   useEffect(() => {
     void reloadProfiles();
   }, [charSignature, reloadProfiles]);
@@ -43,10 +46,13 @@ export default function CharactersPage() {
   useEffect(() => {
     if (!profile) return;
     setPrompt(profile.prompt);
-    setAttrs(profile.attributes ?? {});
     setKind(profile.kind);
     setUseAnchor(true);
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // パーソナルデータは、AI の推定で埋まったときにも入力欄へ反映する
+  useEffect(() => {
+    if (profile) setAttrs(profile.attributes ?? {});
+  }, [profile?.id, profile?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [model, setModel] = useState("google-nano-banana");
   const [aspect, setAspect] = useState("9:16");
   useEffect(() => {
@@ -131,8 +137,45 @@ export default function CharactersPage() {
   const isExisting = !!profile;
   const showPersonal = (profile?.kind ?? kind) === "character";
 
+  // 拡大表示（完成した画像だけを前後に移動できる）
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  const viewable = shown.filter((c) => c.status === "ready" && c.imageUrl);
+  const lightboxItems: LightboxItem[] = viewable.map((c) => {
+    const info = attributeList(c.attributes ?? profiles.find((p) => p.name === c.name)?.attributes);
+    return {
+      key: c.id,
+      title: c.name,
+      imageUrl: c.imageUrl,
+      info: (
+        <div className="space-y-3 text-xs">
+          {info.length > 0 ? (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              {info.map((a) => (
+                <div key={a.label} className="contents">
+                  <dt className="text-white/50">{a.label}</dt>
+                  <dd>{a.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="text-white/50">パーソナルデータ未登録</p>
+          )}
+          {c.prompt && c.prompt !== "(アップロード)" && (
+            <p className="whitespace-pre-wrap text-white/70">
+              <span className="text-white/40">プロンプト: </span>
+              {c.prompt}
+            </p>
+          )}
+          {anchorIds.has(c.id) && <p className="text-amber-300">★ この人物の顔の基準画像です</p>}
+        </div>
+      ),
+    };
+  });
+
   return (
     // PC（xl 以上）: 左＝生成メニュー、右＝一覧。それぞれ別々にスクロールし、ページ全体はスクロールしない
+    <>
+    <Lightbox items={lightboxItems} index={viewIndex} onIndex={setViewIndex} onClose={() => setViewIndex(null)} />
     <div className="grid gap-6 xl:grid-cols-[minmax(640px,50%)_1fr]">
       <div className="work-pane flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -335,12 +378,14 @@ export default function CharactersPage() {
                 onDelete={() => remove(c.id)}
                 onRegenerate={(p) => regenerate(c.id, p)}
                 onSetAnchor={() => setAnchor(c)}
+                onOpen={() => setViewIndex(viewable.findIndex((v) => v.id === c.id))}
               />
             ))}
           </div>
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -353,6 +398,7 @@ function CharacterCard({
   onDelete,
   onRegenerate,
   onSetAnchor,
+  onOpen,
 }: {
   c: CharacterView;
   tags: string[];
@@ -362,10 +408,10 @@ function CharacterCard({
   onDelete: () => void;
   onRegenerate: (prompt: string) => void;
   onSetAnchor: () => void;
+  onOpen: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(c.name);
-  const [showInfo, setShowInfo] = useState(false);
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenPrompt, setRegenPrompt] = useState(c.prompt);
   const info = attributeList(c.attributes ?? profileAttrs);
@@ -376,9 +422,9 @@ function CharacterCard({
     <div className={`group overflow-hidden rounded-xl border bg-panel ${isAnchor ? "border-amber-400/70" : "border-line"}`}>
       <div className="relative bg-black" style={aspectStyle(c.aspect)}>
         {ready ? (
-          // タップでパーソナルデータの表示を切り替え（マウスではホバーで表示）
+          // クリック・タップで拡大表示（パソコンではホバーでパーソナルデータも表示）
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={c.imageUrl} alt={c.name} className="h-full w-full cursor-pointer object-cover" onClick={() => setShowInfo((v) => !v)} />
+          <img src={c.imageUrl} alt={c.name} className="h-full w-full cursor-zoom-in object-cover" onClick={onOpen} />
         ) : c.status === "pending" ? (
           <div className="flex h-full items-center justify-center">
             <Spinner label="生成中…" />
@@ -392,12 +438,8 @@ function CharacterCard({
         {/* パーソナルデータと生成時のプロンプト */}
         {ready && (
           <div
-            onClick={() => setShowInfo(false)}
-            className={`absolute inset-0 overflow-y-auto bg-black/80 p-3 pt-10 text-[11px] leading-relaxed transition-opacity ${
-              showInfo
-                ? "opacity-100"
-                : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100"
-            }`}
+            onClick={onOpen}
+            className="pointer-events-none absolute inset-0 cursor-zoom-in overflow-y-auto bg-black/80 p-3 pt-10 text-[11px] leading-relaxed opacity-0 transition-opacity [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100"
           >
             {info.length > 0 ? (
               <dl className="mb-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
@@ -427,6 +469,7 @@ function CharacterCard({
           <Badge tone="accent">{c.name}</Badge>
           {isAnchor && <Badge tone="warn">★基準</Badge>}
           {c.kind === "item" && <Badge tone="warn">商品</Badge>}
+          {c.estimating && <Badge>データ推定中…</Badge>}
         </div>
         <div className="absolute right-2 top-2 z-10 hidden gap-1 group-hover:flex [@media(hover:none)]:flex">
           {ready && !isAnchor && (

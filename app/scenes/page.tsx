@@ -11,10 +11,12 @@ import {
   useModels,
   usePolled,
   type CharacterView,
+  type ProfileView,
   type ProjectView,
   type SceneView,
 } from "@/lib/client";
 import { AspectSelect } from "@/components/AspectSelect";
+import { Lightbox, type LightboxItem } from "@/components/Lightbox";
 import { TagEditor, TagFilter, collectTags } from "@/components/Tags";
 import { Badge, Button, Empty, Field, KeyWarning, Panel, Select, Spinner, inputCls } from "@/components/ui";
 
@@ -26,8 +28,16 @@ export default function ScenesPage() {
     d.some((s) => s.imageStatus === "pending" || s.videoStatus === "pending"),
   );
   const { data: projects } = usePolled<ProjectView[]>("/api/projects", () => false);
+  const { data: profileData } = usePolled<ProfileView[]>("/api/profiles", () => false);
 
-  // 生成フォーム
+  // 左側のタブ: 1. 画像を作る / 2. 動画にする・③へ送る
+  const [tab, setTab] = useState<"image" | "video">("image");
+  // 画像ができたら続けて動画も作る
+  const [autoVideo, setAutoVideo] = useState(true);
+  // 拡大表示
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+
+  // 生成フォーム（人物・商品は名前ごとに選び、送るのはその基準画像の ID）
   const [charIds, setCharIds] = useState<string[]>([]);
   const [prompts, setPrompts] = useState("");
   const [perPrompt, setPerPrompt] = useState(2);
@@ -62,18 +72,85 @@ export default function ScenesPage() {
   }, [vm, duration]);
 
   const scenes = data ?? [];
-  const readyChars = (characters ?? []).filter((c) => c.status === "ready");
-  const readyPeople = readyChars.filter((c) => (c.kind ?? "character") === "character");
-  const readyItems = readyChars.filter((c) => c.kind === "item");
+  // 人物・商品は名前（プロフィール）ごとに1つ、基準画像で表示する
+  const pickable = (profileData ?? [])
+    .filter((p) => p.anchorId && p.anchorUrl)
+    .map((p) => ({ id: p.anchorId!, name: p.name, imageUrl: p.anchorUrl, kind: p.kind }));
+  const readyPeople = pickable.filter((p) => p.kind === "character");
+  const readyItems = pickable.filter((p) => p.kind === "item");
   const allTags = useMemo(() => collectTags(scenes), [scenes]);
+  const charName = (id: string) => characters?.find((c) => c.id === id)?.name;
+  const sceneNames = (s: SceneView) => [...new Set(s.characterIds.map(charName).filter((n): n is string => !!n))];
   const shown = scenes.filter(
     (s) =>
       filter.every((t) => s.tags.includes(t)) &&
       (!videoOnly || s.videoStatus === "ready") &&
-      (!charFilter || s.characterIds.includes(charFilter)),
+      (!charFilter || sceneNames(s).includes(charFilter)),
   );
   const selectedScenes = scenes.filter((s) => selected.includes(s.id));
-  const charName = (id: string) => characters?.find((c) => c.id === id)?.name;
+  const promptCount = prompts.split("\n").filter((p) => p.trim()).length * perPrompt;
+
+  const viewable = shown.filter((s) => s.imageUrl);
+  const lightboxItems: LightboxItem[] = viewable.map((s) => ({
+    key: s.id,
+    title: sceneNames(s).join("・") || "シーン",
+    imageUrl: s.imageUrl,
+    videoUrl: s.videoStatus === "ready" ? s.videoUrl : undefined,
+    info: (
+      <div className="space-y-2 text-xs">
+        <p className="whitespace-pre-wrap text-white/80">{s.prompt}</p>
+        {s.motionPrompt && <p className="text-white/50">動き: {s.motionPrompt}</p>}
+        {s.videoStatus === "ready" && (
+          <p className="text-white/50">
+            動画 {s.duration?.toFixed(1)}秒{s.hasAudio ? "・環境音あり" : ""}
+          </p>
+        )}
+        {s.tags.length > 0 && <p className="text-accent">{s.tags.map((t) => `#${t}`).join(" ")}</p>}
+      </div>
+    ),
+  }));
+
+  // 動画モデル・動き・秒数（「1. 画像・動画を作る」と「2. 選んで動画化」で共通）
+  const videoSettings = (
+    <>
+      <Field
+        label="動画モデル"
+        hint={vm && !vm.nativeAudio ? "生成後に MMAudio で環境音を自動付与します（fal.ai のキーが必要）" : "モデルが環境音を同時に生成します"}
+      >
+        <Select value={videoModel} onChange={(e) => setVideoModel(e.target.value)}>
+          {models?.videoModels.map((m) => (
+            <option key={m.id} value={m.id} disabled={!m.available}>
+              {m.label}
+              {m.available ? "" : "（キー未設定）"}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <Field label="動き（任意）">
+          <input className={inputCls} value={motion} onChange={(e) => setMotion(e.target.value)} placeholder="ゆっくりカメラに近づく、髪が風になびく" />
+        </Field>
+        <Field label="秒数">
+          <Select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+            {vm?.durations.map((d) => (
+              <option key={d} value={d}>
+                {d}s
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+    </>
+  );
+
+  const videoOne = async (id: string) => {
+    try {
+      await api("/api/scenes/video", { method: "POST", json: { sceneIds: [id], videoModel, motionPrompt: motion, duration } });
+      await reload();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
 
   const generate = async () => {
     setBusy(true);
@@ -88,9 +165,11 @@ export default function ScenesPage() {
           imageModel,
           aspect,
           tags: newTags,
+          video: autoVideo ? { videoModel, motionPrompt: motion, duration } : null,
         },
       });
       await reload();
+      if (autoVideo) setMsg("画像ができ次第、続けて動画を作ります（1本あたり1〜数分）");
       scrollToOnNarrow("scene-results");
     } catch (e) {
       setMsg((e as Error).message);
@@ -140,6 +219,8 @@ export default function ScenesPage() {
 
   return (
     // PC（xl 以上）: 左＝生成・動画化メニュー、右＝一覧。それぞれ別々にスクロールする
+    <>
+    <Lightbox items={lightboxItems} index={viewIndex} onIndex={setViewIndex} onClose={() => setViewIndex(null)} />
     <div className="grid gap-6 xl:grid-cols-[minmax(460px,34%)_1fr]">
       <div className="work-pane space-y-4 xl:overflow-y-auto xl:pr-1">
         <h1 className="text-xl font-bold">② シーン素材の量産</h1>
@@ -149,9 +230,26 @@ export default function ScenesPage() {
         <KeyWarning show={!!vm && vm.provider === "google" && aspect !== "9:16" && aspect !== "16:9"}>
           Veo は 9:16 / 16:9 で生成します。{aspect} にするには ③ の書き出し時に切り抜き / 余白で調整されます。
         </KeyWarning>
-        <Panel title="シーン画像を生成">
+        <div className="flex gap-1 rounded-lg bg-black/40 p-1 text-sm">
+          <button
+            onClick={() => setTab("image")}
+            className={`flex-1 rounded-md py-1.5 ${tab === "image" ? "bg-white/10 text-white" : "text-white/50"}`}
+          >
+            1. 画像・動画を作る
+          </button>
+          <button
+            onClick={() => setTab("video")}
+            className={`flex-1 rounded-md py-1.5 ${tab === "video" ? "bg-white/10 text-white" : "text-white/50"}`}
+          >
+            2. 選んで動画化・③へ{selected.length > 0 && <span className="ml-1 rounded-full bg-accent px-1.5 text-xs text-white">{selected.length}</span>}
+          </button>
+        </div>
+        {msg && <p className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">{msg}</p>}
+
+        {tab === "image" && (
+        <Panel title="シーンを生成">
           <div className="space-y-3">
-            <Field label="人物" hint="複数選択可。顔・髪型・体型をそろえて生成します">
+            <Field label="人物" hint="名前ごとに、① の「★基準」画像の顔をそろえて生成します（複数選択可）">
               <AssetPicker
                 assets={readyPeople}
                 selected={charIds}
@@ -168,9 +266,12 @@ export default function ScenesPage() {
               />
             </Field>
             {charIds.length > 3 && (
-              <p className="text-[11px] text-amber-300">参照画像が多いと再現度が下がることがあります（目安: 合計 3 枚まで）</p>
+              <p className="text-[11px] text-amber-300">参照画像が多いと再現度が下がることがあります（目安: 合計 3 つまで）</p>
             )}
-            <Field label="シーンのプロンプト（1行 = 1シーン）">
+            <Field
+              label="シーンのプロンプト（1行 = 1シーン）"
+              hint="セリフではなく「誰が・どこで・何をしている写真か」を書いてください（例: ジムでプロテインシェイカーを持ち、うんざりした表情）"
+            >
               <textarea
                 className={`${inputCls} h-32`}
                 value={prompts}
@@ -206,38 +307,29 @@ export default function ScenesPage() {
             <Field label="付与するタグ">
               <TagEditor tags={newTags} onChange={setNewTags} suggestions={allTags} />
             </Field>
+            <div className={`space-y-3 rounded-lg border p-3 ${autoVideo ? "border-accent/50 bg-accent/10" : "border-line"}`}>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={autoVideo} onChange={(e) => setAutoVideo(e.target.checked)} />
+                画像と一緒に動画も作る（環境音つき）
+              </label>
+              {autoVideo && videoSettings}
+              {!autoVideo && <p className="text-[11px] text-white/50">オフの場合は画像だけを作ります。あとで「2. 選んで動画化」から動画にできます。</p>}
+            </div>
             <Button variant="primary" className="w-full py-2" disabled={busy || !prompts.trim()} onClick={generate}>
-              シーン画像を生成（{prompts.split("\n").filter((p) => p.trim()).length * perPrompt} 枚）
+              {autoVideo ? `画像＋動画を生成（${promptCount} 本）` : `シーン画像を生成（${promptCount} 枚）`}
             </Button>
           </div>
         </Panel>
+        )}
 
         <div id="scene-actions" className="scroll-mt-4" />
+        {tab === "video" && (
         <Panel title={`選択中のシーン（${selected.length}）`}>
           <div className="space-y-3">
-            <Field label="動画モデル" hint={vm && !vm.nativeAudio ? "生成後に MMAudio で環境音を自動付与します" : "モデルが環境音を生成します"}>
-              <Select value={videoModel} onChange={(e) => setVideoModel(e.target.value)}>
-                {models?.videoModels.map((m) => (
-                  <option key={m.id} value={m.id} disabled={!m.available}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Field label="動き（任意）">
-                <input className={inputCls} value={motion} onChange={(e) => setMotion(e.target.value)} placeholder="ゆっくりカメラに近づく、髪が風になびく" />
-              </Field>
-              <Field label="秒数">
-                <Select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-                  {vm?.durations.map((d) => (
-                    <option key={d} value={d}>
-                      {d}s
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
+            {selected.length === 0 && (
+              <p className="text-xs text-white/50">右の一覧で画像をクリックして選択してください（カードの「🎬」で1枚ずつ動画化もできます）。</p>
+            )}
+            {videoSettings}
             <Button className="w-full" disabled={!selected.length} onClick={toVideo}>
               選択したシーンを動画化
             </Button>
@@ -266,9 +358,9 @@ export default function ScenesPage() {
                 ③ 結合へ送る
               </Button>
             </div>
-            {msg && <p className="text-xs text-white/60">{msg}</p>}
           </div>
         </Panel>
+        )}
       </div>
 
       <div id="scene-results" className="work-pane scroll-mt-4 space-y-3 pb-20 xl:overflow-y-auto xl:pb-0 xl:pr-1">
@@ -280,9 +372,9 @@ export default function ScenesPage() {
           </label>
           <Select className="!w-auto py-1 text-xs" value={charFilter} onChange={(e) => setCharFilter(e.target.value)}>
             <option value="">全人物・商品</option>
-            {readyChars.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            {pickable.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
               </option>
             ))}
           </Select>
@@ -306,9 +398,12 @@ export default function ScenesPage() {
                 s={s}
                 selected={selected.includes(s.id)}
                 onToggle={() => toggle(s.id)}
-                charNames={s.characterIds.map(charName).filter(Boolean) as string[]}
+                charNames={sceneNames(s)}
                 allTags={allTags}
                 onChanged={reload}
+                onOpen={() => setViewIndex(viewable.findIndex((v) => v.id === s.id))}
+                onVideo={() => videoOne(s.id)}
+                videoLabel={vm?.label}
               />
             ))}
           </div>
@@ -324,24 +419,28 @@ export default function ScenesPage() {
           </Button>
           <Button
             variant="primary"
-            onClick={() => document.getElementById("scene-actions")?.scrollIntoView({ behavior: "smooth" })}
+            onClick={() => {
+              setTab("video");
+              document.getElementById("scene-actions")?.scrollIntoView({ behavior: "smooth" });
+            }}
           >
             動画化・③へ送る ↑
           </Button>
         </div>
       )}
     </div>
+    </>
   );
 }
 
-/** ① で登録した人物・商品をサムネイルで選ぶ */
+/** ① で登録した人物・商品をサムネイルで選ぶ（名前ごとに1つ、基準画像で表示） */
 function AssetPicker({
   assets,
   selected,
   onChange,
   empty,
 }: {
-  assets: CharacterView[];
+  assets: { id: string; name: string; imageUrl?: string }[];
   selected: string[];
   onChange: (ids: string[]) => void;
   empty: string;
@@ -376,6 +475,9 @@ function SceneCard({
   charNames,
   allTags,
   onChanged,
+  onOpen,
+  onVideo,
+  videoLabel,
 }: {
   s: SceneView;
   selected: boolean;
@@ -383,7 +485,11 @@ function SceneCard({
   charNames: string[];
   allTags: string[];
   onChanged: () => void;
+  onOpen: () => void;
+  onVideo: () => void;
+  videoLabel?: string;
 }) {
+  const canVideo = s.imageStatus === "ready" && s.videoStatus !== "pending" && s.videoStatus !== "ready";
   const patch = async (body: object) => {
     await api(`/api/scenes/${s.id}`, { method: "PATCH", json: body });
     onChanged();
@@ -442,7 +548,7 @@ function SceneCard({
             <Spinner label="動画生成中…" />
           </div>
         )}
-        <div className="absolute left-2 top-2 flex max-w-[calc(100%-6.5rem)] flex-wrap gap-1">
+        <div className="absolute left-2 top-2 flex max-w-[calc(100%-1rem)] flex-wrap gap-1">
           <input type="checkbox" checked={selected} readOnly className="accent-[#7c5cff]" />
           {s.videoStatus === "ready" && <Badge tone="accent">▶ {s.duration?.toFixed(1)}s{s.hasAudio ? " ♪" : ""}</Badge>}
           {charNames.map((n) => (
@@ -451,21 +557,31 @@ function SceneCard({
         </div>
         {s.videoUrl && s.videoStatus === "ready" && (
           <button
-            className="absolute bottom-2 right-2 rounded-full bg-black/70 px-3 py-1.5 text-xs"
+            className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2.5 py-1 text-xs"
             onClick={(e) => {
               e.stopPropagation();
               togglePlay();
             }}
             title="音ありで再生"
           >
-            {playing ? "❚❚ 停止" : "▶ 音あり再生"}
+            {playing ? "❚❚" : "▶ 音"}
           </button>
         )}
         {/* マウスではホバー時、スマホ（ホバー不可）では常に表示 */}
         <div
-          className="absolute right-2 top-2 hidden gap-1 group-hover:flex [@media(hover:none)]:flex"
+          className="absolute bottom-2 left-2 hidden gap-1 group-hover:flex [@media(hover:none)]:flex"
           onClick={(e) => e.stopPropagation()}
         >
+          {s.imageUrl && (
+            <button className="rounded-md bg-black/70 px-2 py-1 text-xs" onClick={onOpen} title="拡大表示">
+              🔍
+            </button>
+          )}
+          {canVideo && (
+            <button className="rounded-md bg-black/70 px-2 py-1 text-xs" onClick={onVideo} title={`この画像を動画化（${videoLabel ?? ""}）`}>
+              🎬
+            </button>
+          )}
           {s.imageStatus !== "pending" && (
             <button className="rounded-md bg-black/70 px-2 py-1 text-xs" onClick={() => patch({ regenerateImage: true })} title="画像を再生成">
               ↻
